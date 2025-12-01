@@ -7,7 +7,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // Get embedding model
 const getEmbeddingModel = () => {
   try {
-    return genAI.getGenerativeModel({ model: 'embedding-001' });
+    return genAI.getGenerativeModel({ model: 'text-embedding-004' });
   } catch (error) {
     logger.error(`Error initializing Gemini embedding model: ${error.message}`);
     throw error;
@@ -18,7 +18,7 @@ const getEmbeddingModel = () => {
 const getChatModel = () => {
   try {
     return genAI.getGenerativeModel({ 
-      model: 'gemini-pro',
+      model: 'gemini-2.5-flash',
       generationConfig: {
         temperature: 0.7,
         topK: 40,

@@ -6,6 +6,7 @@ const {
   getPDF,
   getPDFStatus,
   deletePDF,
+  retryProcessing,
 } = require('../controllers/pdfController');
 const protect = require('../middlewares/auth');
 const upload = require('../middlewares/upload');
@@ -19,6 +20,7 @@ router.post('/upload', uploadLimiter, upload.single('pdf'), uploadPDF);
 router.get('/', getUserPDFs);
 router.get('/:id', getPDF);
 router.get('/:id/status', getPDFStatus);
+router.post('/:id/retry', retryProcessing);
 router.delete('/:id', deletePDF);
 
 module.exports = router;

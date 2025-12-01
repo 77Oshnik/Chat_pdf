@@ -3,9 +3,8 @@ const logger = require('./logger');
 
 // Redis client configuration
 const redisConfig = {
-  host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT,
-  password: process.env.REDIS_PASSWORD,
+  host: process.env.REDIS_HOST || 'localhost',
+  port: parseInt(process.env.REDIS_PORT) || 6379,
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
   retryStrategy: (times) => {
@@ -14,8 +13,15 @@ const redisConfig = {
   },
 };
 
-// Add TLS if enabled
+// Add password if provided
+if (process.env.REDIS_PASSWORD) {
+  redisConfig.password = process.env.REDIS_PASSWORD;
+}
+
+// Add TLS ONLY if explicitly enabled (for cloud Redis like Upstash, Redis Cloud, etc.)
+// For local Redis, set REDIS_TLS=false or remove it from .env
 if (process.env.REDIS_TLS === 'true') {
+  logger.info('Redis TLS enabled');
   redisConfig.tls = {
     rejectUnauthorized: false,
   };
@@ -26,7 +32,7 @@ const redisClient = new Redis(redisConfig);
 
 // Event handlers
 redisClient.on('connect', () => {
-  logger.info('Redis client connected');
+  logger.info(`Redis client connected to ${redisConfig.host}:${redisConfig.port}`);
 });
 
 redisClient.on('ready', () => {
@@ -35,6 +41,7 @@ redisClient.on('ready', () => {
 
 redisClient.on('error', (err) => {
   logger.error(`Redis client error: ${err.message}`);
+  // Don't exit on Redis errors, let the app handle it
 });
 
 redisClient.on('close', () => {
@@ -52,3 +59,4 @@ process.on('SIGINT', async () => {
 });
 
 module.exports = redisClient;
+

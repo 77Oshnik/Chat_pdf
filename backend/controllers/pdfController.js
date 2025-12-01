@@ -58,6 +58,7 @@ const uploadPDF = async (req, res, next) => {
         pdf: {
           id: pdf._id,
           filename: pdf.filename,
+          cloudinaryUrl: pdf.cloudinaryUrl,
           fileSize: pdf.fileSize,
           processingStatus: pdf.processingStatus,
           createdAt: pdf.createdAt,
@@ -93,10 +94,24 @@ const getUserPDFs = async (req, res, next) => {
 
     const count = await PDF.countDocuments(query);
 
+    // Transform PDFs to include id field
+    const transformedPDFs = pdfs.map(pdf => ({
+      id: pdf._id,
+      filename: pdf.filename,
+      originalName: pdf.originalName,
+      cloudinaryUrl: pdf.cloudinaryUrl,
+      fileSize: pdf.fileSize,
+      pageCount: pdf.pageCount,
+      processingStatus: pdf.processingStatus,
+      embeddingStatus: pdf.embeddingStatus,
+      createdAt: pdf.createdAt,
+      updatedAt: pdf.updatedAt,
+    }));
+
     res.status(200).json({
       success: true,
       data: {
-        pdfs,
+        pdfs: transformedPDFs,
         totalPages: Math.ceil(count / limit),
         currentPage: page,
         total: count,
@@ -127,9 +142,23 @@ const getPDF = async (req, res, next) => {
       });
     }
 
+    // Transform PDF to include id field
+    const transformedPDF = {
+      id: pdf._id,
+      filename: pdf.filename,
+      originalName: pdf.originalName,
+      cloudinaryUrl: pdf.cloudinaryUrl,
+      fileSize: pdf.fileSize,
+      pageCount: pdf.pageCount,
+      processingStatus: pdf.processingStatus,
+      embeddingStatus: pdf.embeddingStatus,
+      createdAt: pdf.createdAt,
+      updatedAt: pdf.updatedAt,
+    };
+
     res.status(200).json({
       success: true,
-      data: { pdf },
+      data: { pdf: transformedPDF },
     });
   } catch (error) {
     logger.error(`Get PDF error: ${error.message}`);
@@ -221,10 +250,81 @@ const deletePDF = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Retry PDF processing
+ * @route   POST /api/pdf/:id/retry
+ * @access  Private
+ */
+const retryProcessing = async (req, res, next) => {
+  try {
+    const pdf = await PDF.findOne({
+      _id: req.params.id,
+      userId: req.user.id,
+    });
+
+    if (!pdf) {
+      return res.status(404).json({
+        success: false,
+        message: 'PDF not found',
+      });
+    }
+
+    // Check if PDF processing failed
+    if (pdf.processingStatus !== 'failed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Can only retry failed PDFs',
+      });
+    }
+
+    // Reset status to pending
+    pdf.processingStatus = 'pending';
+    pdf.embeddingStatus = 'pending';
+    pdf.processingError = undefined;
+    await pdf.save();
+
+    // Get the PDF file from Cloudinary
+    const cloudinaryUrl = pdf.cloudinaryUrl;
+    
+    // Download the PDF from Cloudinary
+    const axios = require('axios');
+    const response = await axios.get(cloudinaryUrl, {
+      responseType: 'arraybuffer',
+    });
+    const pdfBuffer = Buffer.from(response.data);
+
+    // Re-add to processing queue
+    await addPdfProcessingJob({
+      pdfId: pdf._id.toString(),
+      pdfBuffer: pdfBuffer.toJSON().data,
+      userId: req.user.id,
+    });
+
+    logger.info(`PDF queued for retry: ${pdf._id}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'PDF queued for reprocessing',
+      data: {
+        pdf: {
+          id: pdf._id,
+          filename: pdf.filename,
+          processingStatus: pdf.processingStatus,
+          embeddingStatus: pdf.embeddingStatus,
+        },
+      },
+    });
+  } catch (error) {
+    logger.error(`Retry processing error: ${error.message}`);
+    next(error);
+  }
+};
+
 module.exports = {
   uploadPDF,
   getUserPDFs,
   getPDF,
   getPDFStatus,
   deletePDF,
+  retryProcessing,
 };

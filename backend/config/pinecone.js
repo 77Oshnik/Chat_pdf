@@ -6,7 +6,7 @@ const pinecone = new Pinecone({
   apiKey: process.env.PINECONE_API_KEY,
 });
 
-let index = null;
+let index =pinecone.index('quickstart');
 
 // Initialize Pinecone index
 const initPinecone = async () => {

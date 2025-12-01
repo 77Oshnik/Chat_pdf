@@ -3,15 +3,14 @@ const logger = require('../config/logger');
 
 class CacheService {
   /**
-   * Set cache with expiration
-   * @param {string} key - Cache key
-   * @param {any} value - Value to cache
-   * @param {number} ttl - Time to live in seconds
+   * Set cache value with TTL
+   * Uses modern Redis syntax: SET key value EX ttl
    */
   async set(key, value, ttl = 3600) {
     try {
-      const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
-      await redisClient.setex(key, ttl, stringValue);
+      const stringValue = typeof value === "string" ? value : JSON.stringify(value);
+
+      await redisClient.set(key, stringValue, "EX", ttl);
       logger.debug(`Cache set: ${key}`);
     } catch (error) {
       logger.error(`Cache set error: ${error.message}`);
@@ -19,9 +18,19 @@ class CacheService {
   }
 
   /**
-   * Get cache value
-   * @param {string} key - Cache key
-   * @returns {Promise<any>} Cached value or null
+   * Store JSON value safely
+   */
+  async setJSON(key, object, ttl = 3600) {
+    try {
+      await redisClient.set(key, JSON.stringify(object), "EX", ttl);
+      logger.debug(`Cache (JSON) set: ${key}`);
+    } catch (error) {
+      logger.error(`Cache JSON set error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get cache value (auto-JSON parse)
    */
   async get(key) {
     try {
@@ -40,8 +49,7 @@ class CacheService {
   }
 
   /**
-   * Delete cache key
-   * @param {string} key - Cache key
+   * Delete a single key
    */
   async delete(key) {
     try {
@@ -53,30 +61,47 @@ class CacheService {
   }
 
   /**
-   * Delete multiple cache keys by pattern
-   * @param {string} pattern - Key pattern (e.g., 'user:*')
+   * SAFELY scan keys (replaces KEYS command)
+   */
+  async scanKeys(pattern) {
+    let cursor = "0";
+    let keys = [];
+
+    try {
+      do {
+        const reply = await redisClient.scan(cursor, "MATCH", pattern, "COUNT", 100);
+        cursor = reply[0];
+        keys.push(...reply[1]);
+      } while (cursor !== "0");
+
+      return keys;
+    } catch (error) {
+      logger.error(`Cache SCAN error: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Delete multiple keys safely using SCAN
    */
   async deletePattern(pattern) {
     try {
-      const keys = await redisClient.keys(pattern);
+      const keys = await this.scanKeys(pattern);
       if (keys.length > 0) {
         await redisClient.del(...keys);
-        logger.debug(`Cache pattern deleted: ${pattern} (${keys.length} keys)`);
+        logger.debug(`Deleted ${keys.length} keys for pattern: ${pattern}`);
       }
     } catch (error) {
-      logger.error(`Cache delete pattern error: ${error.message}`);
+      logger.error(`Cache deletePattern error: ${error.message}`);
     }
   }
 
   /**
    * Check if key exists
-   * @param {string} key - Cache key
-   * @returns {Promise<boolean>}
    */
   async exists(key) {
     try {
-      const result = await redisClient.exists(key);
-      return result === 1;
+      return (await redisClient.exists(key)) === 1;
     } catch (error) {
       logger.error(`Cache exists error: ${error.message}`);
       return false;
@@ -84,24 +109,19 @@ class CacheService {
   }
 
   /**
-   * Get remaining TTL for a key
-   * @param {string} key - Cache key
-   * @returns {Promise<number>} TTL in seconds, -1 if no expiry, -2 if key doesn't exist
+   * Get key TTL
    */
   async ttl(key) {
     try {
-      return await redisClient.ttl(key);
+      return await redisClient.ttl(key); // returns seconds
     } catch (error) {
       logger.error(`Cache TTL error: ${error.message}`);
-      return -2;
+      return -2; // -2 means key does not exist
     }
   }
 
   /**
-   * Increment a counter
-   * @param {string} key - Cache key
-   * @param {number} increment - Amount to increment (default 1)
-   * @returns {Promise<number>} New value
+   * Increment counter
    */
   async increment(key, increment = 1) {
     try {
@@ -113,12 +133,32 @@ class CacheService {
   }
 
   /**
-   * Clear all cache
+   * Set key only if not exists (NX)
+   * Useful for locks, preventing duplicate jobs, rate limiting
+   */
+  async setIfNotExists(key, value = "1", ttl = 60) {
+    try {
+      return await redisClient.set(key, value, "NX", "EX", ttl);
+    } catch (error) {
+      logger.error(`Cache setIfNotExists error: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Atomic operations (MULTI)
+   */
+  multi() {
+    return redisClient.multi();
+  }
+
+  /**
+   * Clear entire Redis DB (not recommended in production)
    */
   async clear() {
     try {
       await redisClient.flushdb();
-      logger.info('Cache cleared');
+      logger.info("Cache cleared");
     } catch (error) {
       logger.error(`Cache clear error: ${error.message}`);
     }

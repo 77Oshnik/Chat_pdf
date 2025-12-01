@@ -1,7 +1,11 @@
-const pdf = require('pdf-parse');
+const { PDFExtract } = require('pdf.js-extract');
 const logger = require('../config/logger');
 
 class PDFService {
+  constructor() {
+    this.pdfExtract = new PDFExtract();
+  }
+
   /**
    * Extract text from PDF buffer
    * @param {Buffer} pdfBuffer - PDF file buffer
@@ -9,13 +13,18 @@ class PDFService {
    */
   async extractText(pdfBuffer) {
     try {
-      const data = await pdf(pdfBuffer);
-
+      const data = await this.pdfExtract.extractBuffer(pdfBuffer);
+      
+      // Combine all text from all pages
+      const text = data.pages
+        .map(page => page.content.map(item => item.str).join(' '))
+        .join('\n\n');
+      
       return {
-        text: data.text,
-        numPages: data.numpages,
-        info: data.info,
-        metadata: data.metadata,
+        text: text,
+        numPages: data.pages.length,
+        info: data.meta || {},
+        metadata: data.meta || {},
       };
     } catch (error) {
       logger.error(`Error extracting PDF text: ${error.message}`);
@@ -23,12 +32,6 @@ class PDFService {
     }
   }
 
-  /**
-   * Split PDF text into pages (approximation)
-   * @param {string} text - Full PDF text
-   * @param {number} numPages - Number of pages
-   * @returns {Array<Object>} Array of page objects
-   */
   splitIntoPages(text, numPages) {
     const avgCharsPerPage = Math.ceil(text.length / numPages);
     const pages = [];
@@ -49,15 +52,10 @@ class PDFService {
     return pages;
   }
 
-  /**
-   * Clean and preprocess text
-   * @param {string} text - Raw text
-   * @returns {string} Cleaned text
-   */
   cleanText(text) {
     return text
-      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
-      .replace(/\n+/g, '\n') // Replace multiple newlines with single newline
+      .replace(/\s+/g, ' ')
+      .replace(/\n+/g, '\n')
       .trim();
   }
 }

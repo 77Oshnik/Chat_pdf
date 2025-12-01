@@ -5,7 +5,7 @@ const PDF = require('../models/PDF');
 const embeddingService = require('../services/embeddingService');
 const vectorService = require('../services/vectorService');
 const chatService = require('../services/chatService');
-const redisClient = require('../config/redis');
+const cacheService = require('../utils/cacheService');
 const logger = require('../config/logger');
 
 /**
@@ -69,11 +69,11 @@ const sendMessage = async (req, res, next) => {
 
     // Check cache for similar question
     const cacheKey = `chat:${pdfId}:${message.toLowerCase().trim()}`;
-    const cachedResponse = await redisClient.get(cacheKey);
+    const cachedResponse = await cacheService.get(cacheKey);
 
     if (cachedResponse) {
       logger.info('Returning cached response');
-      const response = JSON.parse(cachedResponse);
+      const response = cachedResponse;
 
       // Add to chat history
       await chat.addMessage('user', message);
@@ -129,10 +129,10 @@ const sendMessage = async (req, res, next) => {
     }));
 
     // Cache the response (expire in 1 hour)
-    await redisClient.setex(
+    await cacheService.set(
       cacheKey,
-      3600,
-      JSON.stringify({ answer, context })
+      { answer, context },
+      3600
     );
 
     // Add to chat history
