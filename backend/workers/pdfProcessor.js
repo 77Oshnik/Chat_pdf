@@ -1,4 +1,5 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const { Worker } = require('bullmq');
 const redisClient = require('../config/redis');
 const logger = require('../config/logger');
@@ -182,13 +183,38 @@ const createWorker = () => {
 
   // Worker event listeners
   worker.on('completed', (job) => {
-    console.log(`✅ Job ${job.id} completed`);
+    console.log(`✅ Job ${job.id} completed successfully`);
     logger.info(`Worker completed job ${job.id}`);
   });
 
-  worker.on('failed', (job, err) => {
-    console.error(`❌ Job ${job.id} failed:`, err.message);
-    logger.error(`Worker failed job ${job.id}: ${err.message}`);
+  worker.on('failed', async (job, err) => {
+    const attemptsMade = job.attemptsMade;
+    const maxAttempts = job.opts.attempts || 3;
+    const willRetry = attemptsMade < maxAttempts;
+
+    if (willRetry) {
+      console.log(`⚠️  Job ${job.id} failed (attempt ${attemptsMade}/${maxAttempts})`);
+      console.log(`   Error: ${err.message}`);
+      console.log(`   🔄 Will retry in ${Math.pow(2, attemptsMade) * 2} seconds...`);
+      logger.warn(`Job ${job.id} failed on attempt ${attemptsMade}/${maxAttempts}, will retry: ${err.message}`);
+      
+      // Don't mark as failed if will retry
+      await PDF.findByIdAndUpdate(job.id, {
+        processingStatus: 'processing',
+        embeddingStatus: 'processing',
+      });
+    } else {
+      console.error(`❌ Job ${job.id} failed permanently after ${maxAttempts} attempts`);
+      console.error(`   Final error: ${err.message}`);
+      logger.error(`Worker permanently failed job ${job.id} after ${maxAttempts} attempts: ${err.message}`);
+      
+      // Mark as permanently failed only after all retries exhausted
+      await PDF.findByIdAndUpdate(job.id, {
+        processingStatus: 'failed',
+        embeddingStatus: 'failed',
+        processingError: `Failed after ${maxAttempts} attempts: ${err.message}`,
+      });
+    }
   });
 
   worker.on('error', (err) => {
@@ -197,7 +223,14 @@ const createWorker = () => {
   });
 
   worker.on('active', (job) => {
-    console.log(`▶️  Started processing job ${job.id}`);
+    const attemptsMade = job.attemptsMade;
+    const maxAttempts = job.opts.attempts || 3;
+    
+    if (attemptsMade > 1) {
+      console.log(`▶️  Retrying job ${job.id} (attempt ${attemptsMade}/${maxAttempts})`);
+    } else {
+      console.log(`▶️  Started processing job ${job.id}`);
+    }
   });
 
   console.log('✅ Worker created\n');

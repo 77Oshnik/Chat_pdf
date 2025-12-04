@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const { Pinecone } = require('@pinecone-database/pinecone');
 const logger = require('./logger');
 
@@ -6,26 +8,42 @@ const pinecone = new Pinecone({
   apiKey: process.env.PINECONE_API_KEY,
 });
 
-let index =pinecone.index('quickstart');
+// Track index reference
+let index = null;
 
-// Initialize Pinecone index
+/**
+ * Initialize Pinecone Connection
+ */
 const initPinecone = async () => {
   try {
-    // Get the index
+    // Validate environment variables
+    if (!process.env.PINECONE_API_KEY) {
+      throw new Error("PINECONE_API_KEY is missing in .env");
+    }
+
+    if (!process.env.PINECONE_INDEX_NAME) {
+      throw new Error("PINECONE_INDEX_NAME is missing in .env");
+    }
+
+    // Create index reference
     index = pinecone.index(process.env.PINECONE_INDEX_NAME);
-    logger.info(`Pinecone index '${process.env.PINECONE_INDEX_NAME}' initialized`);
-    
+
+    logger.info(`Pinecone index '${process.env.PINECONE_INDEX_NAME}' initialized successfully`);
+
     return index;
+
   } catch (error) {
-    logger.error(`Error initializing Pinecone: ${error.message}`);
+    logger.error(`Error during Pinecone initialization: ${error.message}`);
     throw error;
   }
 };
 
-// Get index instance
+/**
+ * Get Pinecone index instance
+ */
 const getIndex = () => {
   if (!index) {
-    throw new Error('Pinecone index not initialized. Call initPinecone() first.');
+    throw new Error("Pinecone index not initialized. Call initPinecone() first.");
   }
   return index;
 };

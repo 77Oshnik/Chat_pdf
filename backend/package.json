@@ -6,7 +6,10 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon index.js",
     "worker": "node workers/pdfProcessor.js",
-    "dev:worker": "nodemon workers/pdfProcessor.js"
+    "dev:worker": "nodemon workers/pdfProcessor.js",
+    "queue:stats": "node scripts/manageQueue.js stats",
+    "queue:retry": "node scripts/manageQueue.js retry",
+    "queue:cleanup": "node scripts/manageQueue.js cleanup"
   },
   "author": "",
   "license": "ISC",

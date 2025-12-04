@@ -5,6 +5,9 @@ const logger = require('./logger');
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Get embedding model
+// Using gemini-embedding-001 which produces 3072-dimensional vectors
+// ⚠️ IMPORTANT: Your Pinecone index MUST be configured for 3072 dimensions!
+// To create/update Pinecone index: https://app.pinecone.io
 const getEmbeddingModel = () => {
   try {
     return genAI.getGenerativeModel({ model: 'text-embedding-004' });
